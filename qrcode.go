@@ -4,7 +4,8 @@ package goqr
 // in the input image.
 type qrCode struct {
 	// The four corners of the QR-code, from top left, clockwise
-	corners [4]point
+	// 二维码的四个角，从左上角，顺时针
+	corners [4]point // 存储是个点
 
 	// The number of cells across in the QR-code. The cell bitmap
 	// is a bitmask giving the actual values of cells. If the cell
@@ -16,22 +17,23 @@ type qrCode struct {
 	//
 
 	size       int
-	cellBitmap [qrMaxBimap]uint8
+	cellBitmap [qrMaxBimap]uint8 // 存储每个点的位图
 }
 
 // QRData holds the decoded QR-code data
 type QRData struct {
 	// Various parameters of the QR-code. These can mostly be
 	// ignored if you only care about the data.
-	Version  int
-	EccLevel int
-	Mask     int
+	Version  int // 记录二维码的版本
+	EccLevel int // Ecc容错码等级
+	Mask     int // 掩码
 
 	// This field is the highest-valued data type found in the QR code.
-	DataType int
+	DataType int // 数据类型
 
 	// Data Payload. For the Kanji datatype, Payload is encoded as
 	// Shift-JIS. For all other datatypes, Payload is ASCII text.
+	// 负载数据,如果是中文或韩国以及日本文字必须使用Shift-JIS编码,其他数据必须是ASCII文本
 	Payload []uint8
 
 	// ECI assignment number
