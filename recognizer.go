@@ -17,24 +17,27 @@ var (
 )
 
 // Recognizer is a Qr Code recognizer interface
+// 识别接口
 type Recognizer interface {
-	SetPixel(x, y int, val uint8)
-	Begin()
-	End()
-	Count() int
-	Decode(index int) (*QRData, error)
+	SetPixel(x, y int, val uint8) // 设置像素
+	Begin() // 开始
+	End() // 停止
+	Count() int // 返回识别的个数
+	Decode(index int) (*QRData, error) // 解码指定下表的第几个
 }
 
+// 识别结构体
 type recognizer struct {
-	pixels    []uint8
-	w         int
-	h         int
-	regions   []qrRegion
+	pixels    []uint8 // 存储像素
+	w         int // 宽度
+	h         int // 高度
+	regions   []qrRegion //区域
 	capstones []qrCapstone
-	grids     []qrGrid
+	grids     []qrGrid // 网格
 }
 
 // NewRecognizer news a recognizer
+// 返回一个识别
 func NewRecognizer(w, h int) Recognizer {
 	if w <= 0 || h <= 0 {
 		return nil
@@ -46,28 +49,32 @@ func NewRecognizer(w, h int) Recognizer {
 	}
 }
 
+// 设置像素,指定x,y坐标,设置值
 func (q *recognizer) SetPixel(x, y int, val uint8) {
 	q.pixels[x+y*q.w] = val
 }
 
+// 返回grids的数量
 func (q *recognizer) Count() int {
 	return len(q.grids)
 }
 
+// 初始化regions是一个[]qrBegion
 func (q *recognizer) Begin() {
 	q.regions = make([]qrRegion, qrPixelRegion)
 }
 
 func (q *recognizer) End() {
-	q.threshold()
+	q.threshold() // 临界点
 	for i := 0; i < q.h; i++ {
-		q.finderScan(i)
+		q.finderScan(i) // 查找和扫描
 	}
 	for i := 0; i < len(q.capstones); i++ {
 		q.testGrouping(i)
 	}
 }
 
+// 提炼
 func (q *recognizer) extract(index int) (*qrCode, error) {
 	code := &qrCode{}
 
@@ -76,8 +83,8 @@ func (q *recognizer) extract(index int) (*qrCode, error) {
 	if index < 0 || index >= len(q.grids) {
 		return nil, ErrOutOfRange
 	}
-
-	perspectiveMap(qr.c[:], 0.0, 0.0, &code.corners[0])
+	// 透视图
+	perspectiveMap(qr.c[:], 0.0, 0.0, &code.corners[0]) // 获取第一个识别点
 	perspectiveMap(qr.c[:], float64(qr.gridSize), 0.0, &code.corners[1])
 	perspectiveMap(qr.c[:], float64(qr.gridSize), float64(qr.gridSize), &code.corners[2])
 	perspectiveMap(qr.c[:], 0.0, float64(qr.gridSize), &code.corners[3])
@@ -95,6 +102,7 @@ func (q *recognizer) extract(index int) (*qrCode, error) {
 	return code, nil
 }
 
+// 解码
 func (q *recognizer) Decode(index int) (*QRData, error) {
 	code, err := q.extract(index)
 	if err != nil {
@@ -107,6 +115,7 @@ func (q *recognizer) Decode(index int) (*QRData, error) {
 	return &data, err
 }
 
+// 临界点
 func (q *recognizer) threshold() {
 	var x, y int
 	avgW := 0
@@ -121,8 +130,8 @@ func (q *recognizer) threshold() {
 	}
 
 	for y = 0; y < q.h; y++ {
-		row := q.pixels[q.w*y : q.w*(y+1)]
-		rowAverage := make([]int, q.w)
+		row := q.pixels[q.w*y : q.w*(y+1)] // 获取一行的像素
+		rowAverage := make([]int, q.w) // 行的平均值
 		for x = 0; x < q.w; x++ {
 			var w, u int
 			if y&1 == 1 {
@@ -142,18 +151,19 @@ func (q *recognizer) threshold() {
 
 		for x = 0; x < q.w; x++ {
 			if int(row[x]) < rowAverage[x]*(100-thresholdT)/(200*thresholds) {
-				row[x] = qrPixelBlack
+				row[x] = qrPixelBlack // 黑色像素
 			} else {
-				row[x] = qrPixelWhite
+				row[x] = qrPixelWhite // 白色像素
 			}
 		}
 	}
 }
 
-const floodFileMaxDepth = 4096
+const floodFileMaxDepth = 4096 // 文件最大深度
 
 type spanFunc func(userData interface{}, y, left, right int)
 
+// 填充种子
 func (q *recognizer) floodFillSeed(x, y, from, to int, span spanFunc, userData interface{}, depth int) {
 	left := x
 	right := x
@@ -233,6 +243,7 @@ func (q *recognizer) regionCode(x, y int) int {
 	return region
 }
 
+// 查找二维码的一个角
 func findOneCorner(userData interface{}, y, left, right int) {
 	psd := userData.(*polygonScoreData)
 	xs := [2]int{left, right}
@@ -249,6 +260,7 @@ func findOneCorner(userData interface{}, y, left, right int) {
 	}
 }
 
+// 查找其余的角 - 二维码的四个角定位
 func findOtherCorners(userData interface{}, y, left, right int) {
 	psd := userData.(*polygonScoreData)
 	xs := [2]int{left, right}
@@ -267,6 +279,7 @@ func findOtherCorners(userData interface{}, y, left, right int) {
 	}
 }
 
+// 查找定位的角
 func (q *recognizer) findRegionCorners(rcode int, ref *point, corners []point) {
 	region := &q.regions[rcode]
 	psd := polygonScoreData{}
@@ -436,6 +449,7 @@ func (q *recognizer) finderScan(y int) {
 	}
 }
 
+// 查找对齐模式
 func (q *recognizer) findAlignmentPattern(index int) {
 	qr := &q.grids[index]
 	c0 := &q.capstones[qr.caps[0]]
@@ -447,10 +461,12 @@ func (q *recognizer) findAlignmentPattern(index int) {
 	var u, v float64
 
 	// Grab our previous estimate of the alignment pattern corner
+	// 获取我们之前对对齐模式角的估计
 	b = qr.align
 
 	// Guess another two corners of the alignment pattern so that we
 	// can estimate its size.
+	// 猜测对齐模式的另外两个角，以便我们可以估计它的大小。
 
 	perspectiveUnmap(c0.c[:], &b, &u, &v)
 	perspectiveMap(c0.c[:], u, v+1.0, &a)
@@ -460,6 +476,7 @@ func (q *recognizer) findAlignmentPattern(index int) {
 
 	// Spiral outwards from the estimate point until we find something
 	// roughly the right size. Don't look too far from the estimate point
+	// 从估计点向外螺旋，直到我们找到一些东西大小合适。 不要看离估计点太远
 
 	for stepSize*stepSize < sizeEstimate*100 {
 		dxMap := []int{1, 0, -1, 0}
@@ -491,6 +508,8 @@ func (q *recognizer) findAlignmentPattern(index int) {
 // readCell read a cell from a grid using the currently set perspective
 // transform. Returns +/- 1 for black/white, 0 for cells which are
 // out of image bounds.
+// readCell 使用当前设置的透视图从网格中读取一个单元格转换。 返回 +/- 1 表示黑/白，0 表示单元格超出图像范围。
+// 1表示黑,-1表示白 ,0表示超出图像范围
 func (q *recognizer) readCell(index, x, y int) int {
 	qr := &q.grids[index]
 	var p point
@@ -556,6 +575,7 @@ func (q *recognizer) fitnessCapstone(index, x, y int) int {
 // fitnessAll compute a fitness score for the currently configured perspective
 // transform, using the features we expect to find by scanning the
 // grid.
+// FitnessAll 使用我们期望通过扫描网格找到的特征计算当前配置的透视变换的适应度分数。
 func (q *recognizer) fitnessAll(index int) int {
 	qr := &q.grids[index]
 	version := (qr.gridSize - 17) / 4
@@ -563,6 +583,7 @@ func (q *recognizer) fitnessAll(index int) int {
 	score := 0
 
 	// Check the timing pattern
+	// 检查时序参数
 	for i := 0; i < qr.gridSize-14; i++ {
 		expect := 1
 		if i&1 == 0 {
@@ -582,6 +603,7 @@ func (q *recognizer) fitnessAll(index int) int {
 	}
 
 	// Check alignment patterns
+	// 检查对齐参数
 	apCount := 0
 	for (apCount < qrMaxAliment) && info.apat[apCount] != 0 {
 		apCount++
@@ -639,11 +661,13 @@ func (q *recognizer) jigglePerspective(index int) {
 
 // Once the capstones are in place and an alignment point has been chosen,
 // we call this function to set up a grid-reading perspective transform.
+// 一旦顶点就位并选择了对齐点，我们调用此函数来设置网格读取透视变换。
 func (q *recognizer) setupQrPerspective(index int) {
 	qr := &q.grids[index]
 	var rect [4]point
 
 	/* Set up the perspective map for reading the grid */
+	/* 设置透视图以读取网格 */
 	rect[0] = q.capstones[qr.caps[1]].corners[0]
 	rect[1] = q.capstones[qr.caps[2]].corners[0]
 	rect[2] = qr.align
@@ -653,6 +677,7 @@ func (q *recognizer) setupQrPerspective(index int) {
 	q.jigglePerspective(index)
 }
 
+// 旋转顶点
 func rotateCapstone(cap *qrCapstone, h0, hd *point) {
 	copy := [4]point{}
 
@@ -769,6 +794,8 @@ func findLeftMostToLine(userData interface{}, y, left, right int) {
 // For each capstone, we find a point in the middle of the ring band
 // which is nearest the centre of the code. Using these points, we do
 // a horizontal and a vertical timing scan.
+// 尝试测量给定 QR 码的时间模式。 这确实不需要建立全球视野，但它确实要求顶点角已设置为规范旋转。
+// 对于每个顶点，我们在环带的中间找到一个点离代码中心最近。 使用这些点，我们做水平和垂直定时扫描。
 func (q *recognizer) measureTimingPattern(index int) int {
 	qr := &q.grids[index]
 	for i := 0; i < 3; i++ {
@@ -786,11 +813,13 @@ func (q *recognizer) measureTimingPattern(index int) int {
 	}
 
 	// If neither scan worked, we can't go any further.
+	// 如果扫描都不起作用，我们就不能再进一步了。
 	if scan < 0 {
 		return -1
 	}
 
 	// Choose the nearest allowable grid size
+	// 选择最接近的允许网格大小
 	size := scan*2 + 13
 	ver := (size - 15) / 4
 	qr.gridSize = ver*4 + 17
@@ -805,6 +834,7 @@ func (q *recognizer) recordQrGrid(a, b, c int) {
 	}
 
 	// Construct the hypotenuse line from A to C. B should be tothe left of this line.
+	// 构造从 A 到 C 的斜边线。B 应该在这条线的左边。
 
 	h0 := q.capstones[a].center
 	var hd point
@@ -812,6 +842,7 @@ func (q *recognizer) recordQrGrid(a, b, c int) {
 	hd.y = q.capstones[c].center.y - q.capstones[a].center.y
 
 	// Make sure A-B-C is clockwise
+	// 确保 A-B-C 是顺时针方向
 	if (q.capstones[b].center.x-h0.x)*-hd.y+(q.capstones[b].center.y-h0.y)*hd.x > 0 {
 		a, c = c, a
 		hd.x = -hd.x
@@ -829,6 +860,7 @@ func (q *recognizer) recordQrGrid(a, b, c int) {
 
 	// Rotate each capstone so that corner 0 is top-left with respect
 	// to the grid.
+	// 旋转每个顶点，使角 0 相对于左上角到网格。
 
 	for i := 0; i < 3; i++ {
 		cap := &q.capstones[qr.caps[i]]
@@ -896,6 +928,7 @@ fail:
 
 }
 
+// 测试邻居
 func (q *recognizer) testNeighbours(i int, hlist []*neighbour, vlist []*neighbour) {
 	bestScore := 0.0
 	bestH := -1
@@ -941,6 +974,7 @@ func (q *recognizer) testGrouping(i int) {
 
 	// Look for potential neighbours by examining the relative gradients
 	// from this capstone to others.
+	// 通过检查相对梯度来寻找潜在的邻居从这个顶点到其他人
 
 	for j := 0; j < len(q.capstones); j++ {
 		c2 := &q.capstones[j]
